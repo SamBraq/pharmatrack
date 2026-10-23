@@ -1,0 +1,6 @@
+One file is missing on purpose: zxing.js (the barcode scanner library).
+1. On a computer with internet, open:
+   https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js
+2. Save the page as  zxing.js
+3. Upload it to GitHub together with the other files in this folder.
+Without it the camera scanner will not start, and you can still type barcodes or use a Bluetooth scanner.
