@@ -53,7 +53,7 @@ const hasBc=(p,c)=>{const n=norm(c);return !!n&&String(p.bc||'').split(/[,;\n]+/
 const byBc=c=>S.products.find(p=>hasBc(p,c));
 
 function render(){
- const a=$('app');
+ const a=$('app');stopCam();
  if(!U){a.innerHTML=`<div class=lg><main><div class=lgh>${logo(88)}<h2>PharmaTrack</h2></div><p class=m>Choose your name and enter your PIN. Every action is recorded under it.</p><select id=un>${S.users.filter(u=>u.active!==false).map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select><input id=pin type=password inputmode=numeric placeholder="PIN" onkeydown="if(event.key=='Enter')login()"><div id=err class=bad></div><button class=pri onclick=login()>Sign in</button><p class=m>First use: Owner PIN 1234, Staff 1 PIN 1111. Change them in Reports.</p></main></div>`;return}
  const T=[['sell','Sell'],['stock','Stock'],['recv','Receive'],['count','Count']];if(U.role!='staff'){const u=fcast().filter(x=>x.left<(S.cfg.lead||7)).length;T.push(['dash','Dashboard'+(u?' ('+u+')':'')]);const n=pend().length+unv().length;T.push(['appr','Approvals'+(n?' ('+n+')':'')])}if(owner())T.push(['rep','Reports']);
  a.innerHTML=`<header><span style="display:flex;align-items:center;gap:8px">${logo(26)}<b>${esc(U.name)}</b></span><span id=ss style="color:var(--m);font-size:13px"></span><button onclick="U=null;cart=[];render()">Sign out</button></header><main id=m></main><nav>${T.map(t=>`<button class="${t[0]==tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')}</nav>`;
@@ -85,27 +85,27 @@ function vd(rc){const why=prompt('Reason for voiding '+rc+'?');if(!why)return;co
  gate('void',L[0].pid,'Void receipt '+rc+': '+why,rc,by=>{L.forEach(e=>ev('void',e.pid,-e.d,{rc,ref:e.id,note:why+' (approved by '+by+')'}));render()})}
 let cam=null;
 function got(c){$('s').value=c;lst();const p=byBc(c);if(p)add(p.id);else $('lst').innerHTML=lkp(c)}
-function stopCam(){try{cam&&cam.reset()}catch(e){}cam=null;$('cam').innerHTML=''}
-async function scan(){
+function stopCam(){try{cam&&cam.reset()}catch(e){}cam=null;const cd=$('cam');if(cd)cd.innerHTML=''}
+async function scan(cb){const fn=cb||got;
  if(cam)return stopCam();
  if(!window.ZXing&&!('BarcodeDetector' in window))return alert('The scanner library is not loaded. Put zxing.js in the server folder (see README), or type the barcode.');
  try{
   const v=document.createElement('video');v.setAttribute('playsinline','');v.style.cssText='width:100%;border-radius:8px';
   $('cam').innerHTML='<p class=m>Point the camera at the barcode. Tap Scan again to stop.</p>';$('cam').append(v);
   if(window.ZXing){const h=new Map(),F=ZXing.BarcodeFormat;h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.CODE_39,F.DATA_MATRIX,F.QR_CODE]);
-   cam=new ZXing.BrowserMultiFormatReader(h);cam.decodeFromConstraints({video:{facingMode:'environment'}},v,r=>{if(r){const c=r.getText();stopCam();got(c)}})}
+   cam=new ZXing.BrowserMultiFormatReader(h);cam.decodeFromConstraints({video:{facingMode:'environment'}},v,r=>{if(r){const c=r.getText();stopCam();fn(c)}})}
   else{const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}),d=new BarcodeDetector();v.srcObject=st;await v.play();
-   const iv=setInterval(async()=>{const r=await d.detect(v).catch(()=>[]);if(r[0]){const c=r[0].rawValue;stopCam();got(c)}},400);cam={reset(){clearInterval(iv);st.getTracks().forEach(x=>x.stop())}}}
+   const iv=setInterval(async()=>{const r=await d.detect(v).catch(()=>[]);if(r[0]){const c=r[0].rawValue;stopCam();fn(c)}},400);cam={reset(){clearInterval(iv);st.getTracks().forEach(x=>x.stop())}}}
  }catch(e){stopCam();alert('Could not start the camera. Allow camera access, and note that scanning needs an https address (or localhost).')}}
 
 /* STOCK */
-function vStock(){return `<input id=s placeholder="Search products" oninput=slst()>${owner()?`<button class=pri onclick=pform()>Add product</button><button onclick=bulk()>Bulk import or export</button>${S.products.length?'':'<button onclick=sample()>Load 3 sample products</button>'}`:''}<div id=lst></div>`}
+function vStock(){return `<div class=row><input id=s placeholder="Search or scan a product" oninput=slst()><button onclick="scan(findScan)">Scan</button></div><div id=cam></div>${owner()?`<button class=pri onclick=pform()>Add product</button><button onclick=bulk()>Bulk import or export</button>${S.products.length?'':'<button onclick=sample()>Load 3 sample products</button>'}`:''}<div id=lst></div>`}
 function slst(){const fl={};fcast().forEach(x=>fl[x.p.id]=x.left);const v=($('s')?.value||'').toLowerCase(),sm=sMap();$('lst').innerHTML=S.products.filter(p=>!v||p.name.toLowerCase().includes(v)||hasBc(p,v)).map(p=>{const s=sm[p.id]||0;return `<div class=card><b>${esc(p.name)}</b> ${p.ctrl?'<span class=tag>controlled</span>':''}<small class="${s<0||(p.ro&&s<=p.ro)?'bad':''}">${fmt(p,s)}${s<0?' (negative)':p.ro&&s<=p.ro?' (low)':''}</small><small>${units(p).map(u=>esc(u.n)+' '+money(u.p)).join(' | ')}</small>${fl[p.id]<(S.cfg.lead||7)?`<small class=bad>Runs out in about ${Math.max(0,Math.round(fl[p.id]))} days at the current pace</small>`:''}${owner()?`<button onclick=pform(${p.id})>Edit</button>`:''}</div>`}).join('')||'<p class=m>No products yet.</p>'}
 function sample(){const d=[['Paracetamol 500mg','tablet',.1,[['strip',10,1],['box',100,9]],0,0,200],['Cough syrup','ml',.1,[['bottle',100,8]],0,2,200],['Tramadol 50mg','capsule',.5,[['strip',10,5],['box',100,45]],1,0,100]];d.forEach(x=>S.products.push({id:nid(),mt:Date.now(),name:x[0],bc:'',base:x[1],bp:x[2],lv:x[3].map(l=>({n:l[0],q:l[1],p:l[2]})),ctrl:!!x[4],tol:x[5],ro:x[6]}));save();render()}
 function pform(id,code){
  const p=id?P(id):{name:'',bc:code||'',base:'tablet',bp:0,lv:[],ctrl:false,tol:0,ro:0},m=p.lv[0]||{},t=p.lv[1]||{};
  $('m').innerHTML=`<h3>${id?'Edit':'Add'} product</h3><label>Template<select onchange=tpl(this.value)><option value="">Choose to prefill</option><option value=tab>Tablets or capsules (box, strip)</option><option value=sach>Sachets (box)</option><option value=bot>Bottle sold whole</option><option value=ml>Liquid or cream (measured)</option></select></label>
- <label>Name and strength<input id=nm value="${esc(p.name)}"></label><label>Barcodes (box, strip and so on: separate with commas)<input id=bc value="${esc(p.bc)}"></label>
+ <label>Name and strength<input id=nm value="${esc(p.name)}"></label><label>Barcodes (box, strip and so on: separate with commas)<input id=bc value="${esc(p.bc)}"></label><button onclick="scan(bcScan)">Scan barcode with camera</button><div id=cam></div>
  <label>Smallest unit (stock is counted in this)<input id=bn value="${esc(p.base)}"></label><label>Price per smallest unit<input id=bp type=number step=any value="${p.bp}"></label>
  <label>Middle pack (optional): name, how many smallest units, price</label><div class=row><input id=mn value="${esc(m.n||'')}" placeholder="strip"><input id=mq type=number value="${m.q||''}" placeholder="10"><input id=mp type=number step=any value="${m.p||''}" placeholder="price"></div>
  <label>Top pack (optional): name, how many smallest units, price</label><div class=row><input id=tn value="${esc(t.n||'')}" placeholder="box"><input id=tq type=number value="${t.q||''}" placeholder="100"><input id=tp type=number step=any value="${t.p||''}" placeholder="price"></div>
@@ -118,6 +118,8 @@ function sp(id){
  [['m'],['t']].forEach(([k])=>{if(g(k+'n')&&+g(k+'q')>1)lv.push({n:g(k+'n'),q:+g(k+'q'),p:+g(k+'p')})});lv.sort((a,b)=>a.q-b.q);
  if(!g('nm')||!g('bn'))return alert('Enter a name and a smallest unit.');
  const o={name:g('nm'),bc:g('bc'),base:g('bn'),bp:+g('bp'),lv,ctrl:$('ct').checked,tol:+g('tl'),ro:+g('ro')};
+ const dup=o.bc.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean).map(c=>({c,p:S.products.find(x=>x.id!=id&&hasBc(x,c))})).find(x=>x.p);
+ if(dup)return alert('Barcode '+dup.c+' already belongs to '+dup.p.name+'.');
  if(id){const p=P(id);const pn=priceNote(p,o);if(pn)ev('price',id,0,{note:pn});Object.assign(p,o,{mt:Date.now()})}else S.products.push({id:nid(),mt:Date.now(),...o});
  save();tab='stock';render()}
 
@@ -257,6 +259,13 @@ function uact(id){
 function upin(id){
  const u=S.users.find(x=>x.id==id);if(!u)return;const p=prompt('New PIN for '+u.name+' (4 or more digits)');
  if(!p||p.length<4)return;u.pin=p;u.mt=Date.now();ev('user',null,0,{note:'PIN reset for '+u.name});render()}
+
+/* SCAN TO ADD OR FIND PRODUCTS (Stock screen) */
+function findScan(c){
+ const p=byBc(c);
+ if(p){$('s').value=p.name;slst();return}
+ if(owner())pform(0,c);else alert('This barcode is not in the product list yet. Ask the owner to add it.')}
+function bcScan(c){const i=$('bc');if(!i)return;i.value=i.value?i.value+', '+c:c}
 function dtxt(){const day=new Date().setHours(0,0,0,0),ev=S.events.filter(e=>e.t>=day),by={},pms={};let tot=0;
  ev.forEach(e=>{if(e.ty=='sale'||e.ty=='void'){const o=e.ty=='sale'?e:S.events.find(x=>x.id==e.ref);if(!o)return;const v=e.ty=='sale'?e.v:-o.v;by[o.u]=(by[o.u]||0)+v;tot+=v;const m=o.pm||'Cash';pms[m]=(pms[m]||0)+v}});
  const n=t=>ev.filter(e=>e.ty==t).length,sm=sMap(),ctl=S.products.filter(p=>p.ctrl).map(p=>p.name+': '+fmt(p,sm[p.id]||0)).join('; ');
