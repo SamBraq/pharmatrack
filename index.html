@@ -54,14 +54,14 @@ const byBc=c=>S.products.find(p=>hasBc(p,c));
 
 function render(){
  const a=$('app');
- if(!U){a.innerHTML=`<div class=lg><main><div class=lgh>${logo(88)}<h2>PharmaTrack</h2></div><p class=m>Choose your name and enter your PIN. Every action is recorded under it.</p><select id=un>${S.users.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select><input id=pin type=password inputmode=numeric placeholder="PIN" onkeydown="if(event.key=='Enter')login()"><div id=err class=bad></div><button class=pri onclick=login()>Sign in</button><p class=m>First use: Owner PIN 1234, Staff 1 PIN 1111. Change them in Reports.</p></main></div>`;return}
+ if(!U){a.innerHTML=`<div class=lg><main><div class=lgh>${logo(88)}<h2>PharmaTrack</h2></div><p class=m>Choose your name and enter your PIN. Every action is recorded under it.</p><select id=un>${S.users.filter(u=>u.active!==false).map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select><input id=pin type=password inputmode=numeric placeholder="PIN" onkeydown="if(event.key=='Enter')login()"><div id=err class=bad></div><button class=pri onclick=login()>Sign in</button><p class=m>First use: Owner PIN 1234, Staff 1 PIN 1111. Change them in Reports.</p></main></div>`;return}
  const T=[['sell','Sell'],['stock','Stock'],['recv','Receive'],['count','Count']];if(U.role!='staff'){const u=fcast().filter(x=>x.left<(S.cfg.lead||7)).length;T.push(['dash','Dashboard'+(u?' ('+u+')':'')]);const n=pend().length+unv().length;T.push(['appr','Approvals'+(n?' ('+n+')':'')])}if(owner())T.push(['rep','Reports']);
  a.innerHTML=`<header><span style="display:flex;align-items:center;gap:8px">${logo(26)}<b>${esc(U.name)}</b></span><span id=ss style="color:var(--m);font-size:13px"></span><button onclick="U=null;cart=[];render()">Sign out</button></header><main id=m></main><nav>${T.map(t=>`<button class="${t[0]==tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')}</nav>`;
  const V={sell:vSell,stock:vStock,recv:vRecv,count:vCount,dash:vDash,appr:vAppr,rep:vRep};
  $('m').innerHTML=V[tab]();
  setSS();clearInterval(ai);if(tab=='appr')ai=setInterval(async()=>{await sync();if(tab=='appr'&&U)$('m').innerHTML=vAppr()},10000);if(tab=='sell'){lst();drawCart()}if(tab=='stock')slst();if(tab=='recv')ru();
 }
-function login(){const u=S.users.find(x=>x.id==$('un').value&&x.pin===$('pin').value);if(!u){$('err').textContent='Wrong PIN';return}U=u;tab='sell';render()}
+function login(){const u=S.users.find(x=>x.id==$('un').value&&x.pin===$('pin').value&&x.active!==false);if(!u){$('err').textContent='Wrong PIN';return}U=u;tab='sell';render()}
 
 /* SELL */
 function vSell(){
@@ -142,6 +142,7 @@ function alerts(){
  S.events.filter(e=>e.t>=since).forEach(e=>{const p=P(e.pid);
   if(e.ty=='void')A.push(`${e.rc} voided by ${e.u}: ${e.note}`);
   if(e.ty=='adj')A.push(`${e.u} adjusted ${p.name} by ${fmt(p,e.d)} (${e.reason}: ${e.note})`);
+  if(e.ty=='user')A.push(`${e.u}: ${e.note}`);
   if(e.ty=='link')A.push(`${e.u} linked a barcode to ${p.name}: ${e.note}`);
   if(e.ty=='price')A.push(`${e.u} changed ${p.name}: ${e.note}`);
   if(e.ty=='count'&&e.d&&Math.abs(e.d)>(p.ctrl?0:p.tol/100*e.exp))A.push(`Count variance on ${p.name}: ${fmt(p,e.d)} (${money(e.v)}), counted by ${e.u}`)});
@@ -159,8 +160,8 @@ function vRep(){
  <h3>Alerts, last 7 days (${A.length})</h3>${A.map(a=>`<div class=card>${esc(a)}</div>`).join('')||'<p class=m>Nothing flagged.</p>'}
  <h3>Reorder</h3>${low.map(p=>`<div class=card>${esc(p.name)}<small>${fmt(p,sm[p.id]||0)} left</small></div>`).join('')||'<p class=m>Nothing low.</p>'}
  <h3>Expiring within 90 days</h3>${ex.map(e=>`<div class=card>${esc(P(e.pid).name)}<small>Batch ${esc(e.batch||'-')}, expires ${esc(e.exp)}</small></div>`).join('')||'<p class=m>None recorded.</p>'}
- <h3>Audit trail (latest 40)</h3>${S.events.slice(-40).reverse().map(e=>`<div class=card><small>${t(e)} | ${esc(e.u)} | ${e.ty}</small>${esc(P(e.pid).name)}: ${e.d?fmt(P(e.pid),e.d):'-'}${e.rc?' | '+e.rc:''}</div>`).join('')}
- <h3>Team</h3>${S.users.map(u=>`<div class=card>${esc(u.name)} (${u.role})</div>`).join('')}<input id=nn placeholder="New staff name"><input id=np placeholder="PIN" inputmode=numeric><select id=nr><option value=staff>Staff</option><option value=manager>Manager (can approve)</option></select><button onclick=nu()>Add staff</button><button onclick=cp()>Change my PIN</button>
+ <h3>Audit trail (latest 40)</h3>${S.events.slice(-40).reverse().map(e=>`<div class=card><small>${t(e)} | ${esc(e.u)} | ${e.ty}</small>${esc((P(e.pid)||{}).name||e.note||'')}: ${e.d?fmt(P(e.pid),e.d):'-'}${e.rc?' | '+e.rc:''}</div>`).join('')}
+ <h3>Team</h3>${S.users.map(u=>`<div class="card row"><span>${esc(u.name)} (${u.role})${u.active===false?' <span class=tag>left</span>':''}</span>${u.id==U.id?'':`<button onclick="uact(${u.id})">${u.active===false?'Reactivate':'Deactivate'}</button><button onclick="upin(${u.id})">Reset PIN</button>`}</div>`).join('')}<input id=nn placeholder="New staff name"><input id=np placeholder="PIN" inputmode=numeric><select id=nr><option value=staff>Staff</option><option value=manager>Manager (can approve)</option></select><button onclick=nu()>Add staff</button><button onclick=cp()>Change my PIN</button>
  <h3>Daily report</h3><div class=card style="white-space:pre-wrap">${esc(dtxt())}</div><a class=pri target=_blank style="display:block;text-align:center;text-decoration:none;border-radius:8px;box-sizing:border-box" href="https://wa.me/${S.cfg.wa||''}?text=${encodeURIComponent(dtxt())}">Send summary to owner on WhatsApp</a>
  <h3>Server and sync</h3><input id=cu placeholder="Server or Google script address" value="${esc(S.cfg.url||'')}"><input id=ck placeholder="Access key" value="${esc(S.cfg.key||'')}"><input id=cw placeholder="Owner WhatsApp number with country code" value="${esc(S.cfg.wa||'')}"><button class=pri onclick=scfg()>Save and sync now</button><p class=m>${esc(ss||'Not connected. The app works without a server.')}</p>
  <h3>Backup</h3><textarea readonly rows=4 onclick=this.select()>${esc(JSON.stringify(S))}</textarea><p class=m>Copy and keep this text somewhere safe. Data is stored on this phone only in this prototype.</p>`}
@@ -174,7 +175,7 @@ function gate(kind,pid,note,rc,ok){
  if(U.role!='staff'){ok(U.name);return}
  G={kind,pid,note,rc,ok};
  modal(`<h3>Manager approval needed</h3><p class=m>${esc(note)}</p><input id=gp type=password inputmode=numeric placeholder="Manager PIN"><button class=pri onclick=gpin()>Approve with manager PIN</button>${url()&&S.cfg.key?'<button class=pri onclick=greq()>Ask a manager remotely</button>':''}<button onclick=unmod()>Cancel</button><div id=gm class=bad></div>`)}
-function gpin(){const m=S.users.find(u=>u.role!='staff'&&u.pin===$('gp').value);if(!m){$('gm').textContent='Wrong PIN';return}unmod();G.ok(m.name+' (PIN)')}
+function gpin(){const m=S.users.find(u=>u.role!='staff'&&u.active!==false&&u.pin===$('gp').value);if(!m){$('gm').textContent='Wrong PIN';return}unmod();G.ok(m.name+' (PIN)')}
 function greq(){
  const r=ev('areq',G.pid,0,{kind:G.kind,note:G.note,rc:G.rc});G.rid=r.id;
  modal(`<h3>Waiting for a manager</h3><p class=m>${esc(G.note)}</p><p class=m id=gw>Request sent. Keep this screen open.</p><button onclick=gcancel()>Cancel request</button>`);
@@ -246,6 +247,16 @@ function vDash(){
  <h3>Slowing down</h3>${fall.map(x=>row(esc(x.p.name)+'<small>'+tr(x)+'</small>',money(x.v-x.vp))).join('')||'<p class=m>Nothing yet.</p>'}
  <h3>Not selling (60+ days)</h3>${slow.map(p=>row(esc(p.name)+'<small>'+(last[p.id]?'Last sold '+Math.round((now-last[p.id])/D1)+' days ago':'No sales recorded')+'</small>',fmt(p,sm[p.id]))).join('')||'<p class=m>None.</p>'}
  <p class=m>Trends come from this pharmacy\u2019s own sales and get more reliable after 4 to 8 weeks of data. They do not include the wider market.</p>`}
+
+/* STAFF: DEACTIVATE, REACTIVATE, RESET PIN */
+function uact(id){
+ const u=S.users.find(x=>x.id==id);if(!u)return;const off=u.active!==false;
+ if(off&&u.role=='owner'&&S.users.filter(x=>x.role=='owner'&&x.active!==false).length<2)return alert('There must be at least one active owner.');
+ if(!confirm((off?'Deactivate ':'Reactivate ')+u.name+'? '+(off?'They will no longer be able to sign in. Their past sales and records stay in the audit trail.':'They will be able to sign in again.')))return;
+ u.active=!off;u.mt=Date.now();ev('user',null,0,{note:(off?'Deactivated ':'Reactivated ')+u.name});render()}
+function upin(id){
+ const u=S.users.find(x=>x.id==id);if(!u)return;const p=prompt('New PIN for '+u.name+' (4 or more digits)');
+ if(!p||p.length<4)return;u.pin=p;u.mt=Date.now();ev('user',null,0,{note:'PIN reset for '+u.name});render()}
 function dtxt(){const day=new Date().setHours(0,0,0,0),ev=S.events.filter(e=>e.t>=day),by={},pms={};let tot=0;
  ev.forEach(e=>{if(e.ty=='sale'||e.ty=='void'){const o=e.ty=='sale'?e:S.events.find(x=>x.id==e.ref);if(!o)return;const v=e.ty=='sale'?e.v:-o.v;by[o.u]=(by[o.u]||0)+v;tot+=v;const m=o.pm||'Cash';pms[m]=(pms[m]||0)+v}});
  const n=t=>ev.filter(e=>e.ty==t).length,sm=sMap(),ctl=S.products.filter(p=>p.ctrl).map(p=>p.name+': '+fmt(p,sm[p.id]||0)).join('; ');
@@ -260,7 +271,7 @@ async function sync(){
   if(!r.ok)throw 0;const d=await r.json();if(d.error){ss='Server refused: '+d.error;setSS();return}out.forEach(e=>e.sy=1);
   const have=new Set(S.events.map(e=>e.id));d.events.forEach(e=>{if(!have.has(e.id)){e.sy=1;S.events.push(e)}});S.events.sort((a,b)=>a.t-b.t);
   [['products',S.products],['users',S.users]].forEach(([k,l])=>d[k].forEach(x=>{const i=l.findIndex(y=>y.id==x.id);if(i<0)l.push(x);else if((x.mt||0)>(l[i].mt||0))l[i]=x}));
-  if(U)U=S.users.find(x=>x.id==U.id)||U;
+  if(U)U=S.users.find(x=>x.id==U.id)||U;if(U&&U.active===false){U=null;cart=[];render()}
   S.cfg.cur=d.cursor;ss='Synced '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});save();const n=pend().length;if(n&&U&&U.role!='staff')ss+=' | '+n+' approval(s) waiting';
  }catch(e){ss='Offline, will retry'}
  setSS()}
