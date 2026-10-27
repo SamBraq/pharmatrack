@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PharmaTrack licence key generator</title>
+<style>
+body{font:16px/1.45 system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#14231f;background:#f3f6f5}
+textarea{width:100%;box-sizing:border-box;font:13px ui-monospace,Consolas,monospace;padding:8px;border:1px solid #bcc9c4;border-radius:8px}
+button{font:inherit;padding:10px 16px;border:0;border-radius:8px;background:#0b6b5c;color:#fff;cursor:pointer;margin:6px 6px 6px 0}
+.warn{background:#fff3cd;border:1px solid #e0c36a;border-radius:8px;padding:10px 12px}
+h2{margin-top:28px}
+@media (prefers-color-scheme:dark){body{background:#0f1816;color:#e6f0ed}textarea{background:#172421;color:#e6f0ed;border-color:#28403a}.warn{background:#3a3217;border-color:#7a6a2c}}
+</style>
+</head>
+<body>
+<h1>Licence key generator</h1>
+<p>Creates the signing key pair for your licence script. Everything happens in this page, on this computer. Nothing is sent anywhere.</p>
+<div class="warn"><b>Run this once and keep the private key secret.</b> Anyone with it can create valid licences. If you lose it, you must make a new pair and update every app.</div>
+<p><button id="go">Generate key pair</button></p>
+
+<h2>1. Private key (secret)</h2>
+<p>Paste into the licence script: Project Settings, Script properties, add a property named <b>PRIVATE_KEY</b>. Keep a copy somewhere safe and offline.</p>
+<textarea id="priv" rows="10" readonly placeholder="Press Generate"></textarea>
+<p><button id="cp1">Copy private key</button></p>
+
+<h2>2. Public key (safe to share)</h2>
+<p>Paste into <b>config.js</b> as <b>licPub</b>. It goes into the app, and it can only check licences, never make them.</p>
+<textarea id="pub" rows="5" readonly placeholder="Press Generate"></textarea>
+<p><button id="cp2">Copy public key</button></p>
+
+<script>
+(function () {
+  function b64(buf) { var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+  function pem(buf) { return '-----BEGIN PRIVATE KEY-----\n' + b64(buf).replace(/(.{64})/g, '$1\n').replace(/\n$/, '') + '\n-----END PRIVATE KEY-----'; }
+  document.getElementById('go').onclick = async function () {
+    if (!(window.crypto && crypto.subtle)) { alert('This browser cannot generate keys here. Use a current Chrome or Edge.'); return; }
+    var k = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+    document.getElementById('priv').value = pem(await crypto.subtle.exportKey('pkcs8', k.privateKey));
+    document.getElementById('pub').value = b64(await crypto.subtle.exportKey('spki', k.publicKey));
+  };
+  function copy(id) { var t = document.getElementById(id); t.select(); try { document.execCommand('copy'); } catch (e) {} }
+  document.getElementById('cp1').onclick = function () { copy('priv'); };
+  document.getElementById('cp2').onclick = function () { copy('pub'); };
+})();
+</script>
+</body>
+</html>
