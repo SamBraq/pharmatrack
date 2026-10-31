@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>PharmaTrack</title><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#0b6b5c"><link rel="icon" href="icon-192.png">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>PharmaTrack</title><script src="config.js"></script><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#0b6b5c"><link rel="icon" href="icon-192.png">
 <style>
 :root{--bg:#f3f6f5;--c:#fff;--t:#14231f;--m:#5f716b;--a:#0b6b5c;--at:#fff;--r:#b3261e;--b:#d5dfdb;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1816;--c:#172421;--t:#e6f0ed;--m:#93a8a1;--a:#3ecfb2;--at:#06241e;--r:#ff8a80;--b:#28403a}}
@@ -45,7 +45,7 @@ const ev=(ty,pid,d,o={})=>{const e={id:nid(),t:Date.now(),u:U.name,ty,pid,d,...o
 const popt=()=>S.products.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
 const logo=s=>`<svg viewBox="0 0 160 160" width="${s}" height="${s}" role="img" aria-label="PharmaTrack logo"><rect width="160" height="160" rx="36" fill="#0b6b5c"/><path d="M80 28 L122 44 V82 C122 108 104 124 80 134 C56 124 38 108 38 82 V44 Z" fill="none" stroke="#fff" stroke-width="7" stroke-linejoin="round"/><path d="M80 58 V104 M57 81 H103" stroke="#fff" stroke-width="12" stroke-linecap="round"/></svg>`;
 const owner=()=>U&&U.role=='owner';
-let pm='Cash',pref='',ai=0,wt=0,G={};
+let pm='Cash',pref='',pamt=0,ppool=0,ai=0,wt=0,G={};
 const pend=()=>S.events.filter(e=>e.ty=='areq'&&!S.events.some(x=>x.ty=='adec'&&x.ref==e.id));
 const unv=()=>S.events.filter(e=>e.ty=='recv'&&e.rq&&!S.events.some(x=>x.ty=='rver'&&x.ref==e.id));
 const norm=c=>{let g=String(c||'').replace(/[()\s]/g,'');if(/^01\d{14}/.test(g))g=g.slice(2,16);return /^\d+$/.test(g)?g.replace(/^0+/,''):g.toLowerCase()};
@@ -55,10 +55,10 @@ const byBc=c=>S.products.find(p=>hasBc(p,c));
 function render(){
  const a=$('app');stopCam();
  if(!U){a.innerHTML=`<div class=lg><main><div class=lgh>${logo(88)}<h2>PharmaTrack</h2></div><p class=m>Choose your name and enter your PIN. Every action is recorded under it.</p><select id=un>${S.users.filter(u=>u.active!==false).map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select><input id=pin type=password inputmode=numeric placeholder="PIN" onkeydown="if(event.key=='Enter')login()"><div id=err class=bad></div><button class=pri onclick=login()>Sign in</button><p class=m>First use: Owner PIN 1234, Staff 1 PIN 1111. Change them in Reports.</p></main></div>`;return}
- const T=[['sell','Sell'],['stock','Stock'],['recv','Receive'],['count','Count']];if(U.role!='staff'){const u=fcast().filter(x=>x.left<(S.cfg.lead||7)).length;T.push(['dash','Dashboard'+(u?' ('+u+')':'')]);const n=pend().length+unv().length;T.push(['appr','Approvals'+(n?' ('+n+')':'')])}if(owner())T.push(['rep','Reports']);
+ const T=[['sell','Sell'],['stock','Stock'],['recv','Receive'],['count','Count']];if(U.role!='staff'){T.push(['pay','Payments']);const u=fcast().filter(x=>x.left<(S.cfg.lead||7)).length;T.push(['dash','Dashboard'+(u?' ('+u+')':'')]);const n=pend().length+unv().length;T.push(['appr','Approvals'+(n?' ('+n+')':'')])}if(owner())T.push(['rep','Reports']);
  a.innerHTML=`<header><span style="display:flex;align-items:center;gap:8px">${logo(26)}<b>${esc(U.name)}</b></span><span id=ss style="color:var(--m);font-size:13px"></span><button onclick="U=null;cart=[];render()">Sign out</button></header><main id=m></main><nav>${T.map(t=>`<button class="${t[0]==tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')}</nav>`;
- const V={sell:vSell,stock:vStock,recv:vRecv,count:vCount,dash:vDash,appr:vAppr,rep:vRep};
- $('m').innerHTML=V[tab]();
+ const V={sell:vSell,stock:vStock,recv:vRecv,count:vCount,pay:vPay,dash:vDash,appr:vAppr,rep:vRep};
+ $('m').innerHTML=licBanner()+V[tab]();
  setSS();clearInterval(ai);if(tab=='appr')ai=setInterval(async()=>{await sync();if(tab=='appr'&&U)$('m').innerHTML=vAppr()},10000);if(tab=='sell'){lst();drawCart()}if(tab=='stock')slst();if(tab=='recv')ru();
 }
 function login(){const u=S.users.find(x=>x.id==$('un').value&&x.pin===$('pin').value&&x.active!==false);if(!u){$('err').textContent='Wrong PIN';return}U=u;tab='sell';render()}
@@ -69,18 +69,18 @@ function vSell(){
  return `<div class=row><input id=s placeholder="Search name or barcode" oninput=lst() onkeydown="if(event.key=='Enter')ent()"><button onclick=scan()>Scan</button></div><div id=cam></div><div id=lst></div><h3>Cart</h3><div id=cart></div><h3>Recent receipts</h3>${rcs.map(r=>{const vd=S.events.some(e=>e.ty=='void'&&e.rc==r);return `<div class="card row"><span>${r}${vd?' (voided)':''}</span>${vd?'':`<button onclick="vd('${r}')">Void</button>`}</div>`}).join('')||'<p class=m>No sales yet today.</p>'}`}
 function lst(){const fl={};fcast().forEach(x=>fl[x.p.id]=x.left);const raw=($('s')?.value||'').trim(),v=raw.toLowerCase(),sm=sMap(),L=S.products.filter(p=>!v||p.name.toLowerCase().includes(v)||hasBc(p,raw)).slice(0,8);
  $('lst').innerHTML=L.map(p=>`<div class=card onclick=add(${p.id})><b>${esc(p.name)}</b><small>In stock: ${fmt(p,sm[p.id]||0)}</small>${fl[p.id]<(S.cfg.lead||7)?'<small class=bad>Running low</small>':''}</div>`).join('')||(/^[\d()\s]{6,}$/.test(raw)?lkp(raw):'<p class=m>No products match. The owner can add products under Stock.</p>')}
-const lkp=c=>`<div class=card><b>Barcode ${esc(c)} is not linked to any product</b>${S.products.length?`<select id=lk>${popt()}</select><button class=pri onclick="lnk('${esc(c)}')">Link to this product</button>`:''}${owner()?`<button onclick="pform(0,'${esc(c)}')">Create new product</button>`:'<p class=m>The owner can create a new product for it.</p>'}</div>`;
+const lkp=c=>`<div class=card><b>Barcode ${esc(c)} is not linked to any product</b>${catHint(c)}${S.products.length?`<select id=lk>${popt()}</select><button class=pri onclick="lnk('${esc(c)}')">Link to this product</button>`:''}${owner()?`<button onclick="pform(0,'${esc(c)}')">Create new product</button>`:'<p class=m>The owner can create a new product for it.</p>'}</div>`;
 function lnk(c){const p=P($('lk').value);if(!p)return;p.bc=p.bc?p.bc+', '+c:c;p.mt=Date.now();ev('link',p.id,0,{note:'Barcode '+c});alert('Linked. The owner will see this in Alerts.');$('s').value='';lst();add(p.id)}
 function ent(){const c=$('s').value.trim(),p=byBc(c);if(p){add(p.id);$('s').value='';lst()}}
 function add(id){const c=cart.find(x=>x.pid==id);c?c.qty++:cart.push({pid:id,ui:units(P(id)).length>1?1:0,qty:1});drawCart()}
-function drawCart(){let tot=0;$('cart').innerHTML=cart.map((c,i)=>{const p=P(c.pid),us=units(p),u=us[c.ui],l=u.p*c.qty;tot+=l;return `<div class=card><b>${esc(p.name)}</b><div class=row><select onchange="chg(${i},'ui',this.value)">${us.map((x,j)=>`<option value=${j} ${j==c.ui?'selected':''}>${esc(x.n)} @ ${money(x.p)}</option>`).join('')}</select><input type=number min=0 step=any value=${c.qty} onchange="chg(${i},'qty',this.value)"><button onclick="rmv(${i})">Remove</button></div><small>Line total ${money(l)}</small></div>`}).join('')+(cart.length?`<div class=tot>Total ${money(tot)}</div><label>Payment method<select onchange="pm=this.value;drawCart()">${['Cash','M-Pesa','Card'].map(x=>`<option ${x==pm?'selected':''}>${x}</option>`).join('')}</select></label>${pm=='M-Pesa'?`<input placeholder="M-Pesa confirmation code" value="${esc(pref)}" oninput="pref=this.value.toUpperCase().trim()">`:''}<button class=pri onclick=pay()>Complete sale</button>`:'<p class=m>Cart is empty. Tap a product above to add it.</p>')}
-function pay(){
+function drawCart(){let tot=0;$('cart').innerHTML=cart.map((c,i)=>{const p=P(c.pid),us=units(p),u=us[c.ui],l=u.p*c.qty;tot+=l;return `<div class=card><b>${esc(p.name)}</b><div class=row><select onchange="chg(${i},'ui',this.value)">${us.map((x,j)=>`<option value=${j} ${j==c.ui?'selected':''}>${esc(x.n)} @ ${money(x.p)}</option>`).join('')}</select><input type=number min=0 step=any value=${c.qty} onchange="chg(${i},'qty',this.value)"><button onclick="rmv(${i})">Remove</button></div><small>Line total ${money(l)}</small></div>`}).join('')+(cart.length?`<div class=tot>Total ${money(tot)}</div><label>Payment method<select onchange="pm=this.value;drawCart()">${['Cash','M-Pesa','Card'].map(x=>`<option ${x==pm?'selected':''}>${x}</option>`).join('')}</select></label>${pm=='M-Pesa'?payHtml(tot)+`<textarea rows=3 placeholder="Paste the M-Pesa message here (only the code and amount are kept)" oninput="mpPaste(this.value)"></textarea><div id=mpr class=m></div><input placeholder="Or type the confirmation code" value="${esc(pref)}" oninput="pref=this.value.toUpperCase().trim();pamt=0;ppool=0"><small class=m>${pref?'Code '+esc(pref)+(pamt?' | amount received '+money(pamt)+(ppool?' (shop phone list)':''):' | amount not checked'):''}</small><button onclick=payModal()>Add received payments (manager PIN)</button>`:''}<button class=pri onclick=pay()>Complete sale</button>`:'<p class=m>Cart is empty. Tap a product above to add it.</p>')}
+function pay(){if(lk())return;
  const sm=sMap();
  for(const c of cart){const p=P(c.pid);if(!(c.qty>0))return alert('Enter a quantity for '+p.name);if((sm[p.id]||0)-c.qty*units(p)[c.ui].q<0&&!confirm('Recorded stock for '+p.name+' is too low. Sell anyway? The owner will see the negative stock.'))return}
- if(pm=='M-Pesa'){if(pref.length<8)return alert('Enter the M-Pesa confirmation code.');if(S.events.some(e=>e.ty=='sale'&&e.pref===pref))return alert('That M-Pesa code was already used on another sale.')}
+ if(pm=='M-Pesa'){if(pref.length<8)return alert('Enter the M-Pesa confirmation code.');if(S.events.some(e=>e.ty=='sale'&&e.pref===pref))return alert('That M-Pesa code was already used on another sale.');const tt=cart.reduce((s,c)=>s+units(P(c.pid))[c.ui].p*c.qty,0);if(pamt&&pamt+.005<tt)return alert('The payment received ('+money(pamt)+') is less than the sale total ('+money(tt)+').');if(pamt&&pamt>tt+.005&&!confirm('The customer paid more ('+money(pamt)+') than the total ('+money(tt)+'). Continue?'))return}
  const rc='R'+S.dev+String(++S.rc).padStart(4,'0');
- cart.forEach(c=>{const p=P(c.pid),u=units(p)[c.ui];ev('sale',p.id,-c.qty*u.q,{v:u.p*c.qty,rc,pm,pref:pm=='M-Pesa'?pref:'',note:c.qty+' '+u.n})});
- cart=[];pm='Cash';pref='';save();alert('Sale '+rc+' recorded');render()}
+ cart.forEach(c=>{const p=P(c.pid),u=units(p)[c.ui];ev('sale',p.id,-c.qty*u.q,{v:u.p*c.qty,rc,pm,pref:pm=='M-Pesa'?pref:'',...(pm=='M-Pesa'&&pamt&&!c.pd?(c.pd=1,{pamt,pv:ppool?1:0}):{}),note:c.qty+' '+u.n})});
+ cart=[];pm='Cash';pref='';pamt=0;ppool=0;save();alert('Sale '+rc+' recorded');render()}
 function vd(rc){const why=prompt('Reason for voiding '+rc+'?');if(!why)return;const L=S.events.filter(e=>e.ty=='sale'&&e.rc==rc&&!S.events.some(x=>x.ty=='void'&&x.ref==e.id));if(!L.length)return;
  gate('void',L[0].pid,'Void receipt '+rc+': '+why,rc,by=>{L.forEach(e=>ev('void',e.pid,-e.d,{rc,ref:e.id,note:why+' (approved by '+by+')'}));render()})}
 let cam=null;
@@ -102,8 +102,8 @@ async function scan(cb){const fn=cb||got;
 function vStock(){return `<div class=row><input id=s placeholder="Search or scan a product" oninput=slst()><button onclick="scan(findScan)">Scan</button></div><div id=cam></div>${owner()?`<button class=pri onclick=pform()>Add product</button><button onclick=bulk()>Bulk import or export</button>${S.products.length?'':'<button onclick=sample()>Load 3 sample products</button>'}`:''}<div id=lst></div>`}
 function slst(){const fl={};fcast().forEach(x=>fl[x.p.id]=x.left);const v=($('s')?.value||'').toLowerCase(),sm=sMap();$('lst').innerHTML=S.products.filter(p=>!v||p.name.toLowerCase().includes(v)||hasBc(p,v)).map(p=>{const s=sm[p.id]||0;return `<div class=card><b>${esc(p.name)}</b> ${p.ctrl?'<span class=tag>controlled</span>':''}<small class="${s<0||(p.ro&&s<=p.ro)?'bad':''}">${fmt(p,s)}${s<0?' (negative)':p.ro&&s<=p.ro?' (low)':''}</small><small>${units(p).map(u=>esc(u.n)+' '+money(u.p)).join(' | ')}</small>${fl[p.id]<(S.cfg.lead||7)?`<small class=bad>Runs out in about ${Math.max(0,Math.round(fl[p.id]))} days at the current pace</small>`:''}${owner()?`<button onclick=pform(${p.id})>Edit</button>`:''}</div>`}).join('')||'<p class=m>No products yet.</p>'}
 function sample(){const d=[['Paracetamol 500mg','tablet',.1,[['strip',10,1],['box',100,9]],0,0,200],['Cough syrup','ml',.1,[['bottle',100,8]],0,2,200],['Tramadol 50mg','capsule',.5,[['strip',10,5],['box',100,45]],1,0,100]];d.forEach(x=>S.products.push({id:nid(),mt:Date.now(),name:x[0],bc:'',base:x[1],bp:x[2],lv:x[3].map(l=>({n:l[0],q:l[1],p:l[2]})),ctrl:!!x[4],tol:x[5],ro:x[6]}));save();render()}
-function pform(id,code){
- const p=id?P(id):{name:'',bc:code||'',base:'tablet',bp:0,lv:[],ctrl:false,tol:0,ro:0},m=p.lv[0]||{},t=p.lv[1]||{};
+function pform(id,code,pre){
+ const p=id?P(id):Object.assign({name:'',bc:code||'',base:'tablet',bp:0,lv:[],ctrl:false,tol:0,ro:0},pre||{}),m=p.lv[0]||{},t=p.lv[1]||{};
  $('m').innerHTML=`<h3>${id?'Edit':'Add'} product</h3><label>Template<select onchange=tpl(this.value)><option value="">Choose to prefill</option><option value=tab>Tablets or capsules (box, strip)</option><option value=sach>Sachets (box)</option><option value=bot>Bottle sold whole</option><option value=ml>Liquid or cream (measured)</option></select></label>
  <label>Name and strength<input id=nm value="${esc(p.name)}"></label><label>Barcodes (box, strip and so on: separate with commas)<input id=bc value="${esc(p.bc)}"></label><button onclick="scan(bcScan)">Scan barcode with camera</button><div id=cam></div>
  <label>Smallest unit (stock is counted in this)<input id=bn value="${esc(p.base)}"></label><label>Price per smallest unit<input id=bp type=number step=any value="${p.bp}"></label>
@@ -113,20 +113,20 @@ function pform(id,code){
  <label><input id=ct type=checkbox style="width:auto" ${p.ctrl?'checked':''}> Controlled drug (any count variance is flagged)</label>
  <button class=pri onclick=sp(${id||0})>Save product</button><button onclick="tab='stock';render()">Cancel</button>`}
 function tpl(k){const T={tab:['tablet','strip',10,'box',100],sach:['sachet','','','box',10],bot:['bottle','','','',''],ml:['ml','','','bottle',100]}[k];if(!T)return;['bn','mn','mq','tn','tq'].forEach((i,j)=>$(i).value=T[j])}
-function sp(id){
+function sp(id){if(lk())return;
  const g=i=>$(i).value,lv=[];
  [['m'],['t']].forEach(([k])=>{if(g(k+'n')&&+g(k+'q')>1)lv.push({n:g(k+'n'),q:+g(k+'q'),p:+g(k+'p')})});lv.sort((a,b)=>a.q-b.q);
  if(!g('nm')||!g('bn'))return alert('Enter a name and a smallest unit.');
  const o={name:g('nm'),bc:g('bc'),base:g('bn'),bp:+g('bp'),lv,ctrl:$('ct').checked,tol:+g('tl'),ro:+g('ro')};
  const dup=o.bc.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean).map(c=>({c,p:S.products.find(x=>x.id!=id&&hasBc(x,c))})).find(x=>x.p);
  if(dup)return alert('Barcode '+dup.c+' already belongs to '+dup.p.name+'.');
- if(id){const p=P(id);const pn=priceNote(p,o);if(pn)ev('price',id,0,{note:pn});Object.assign(p,o,{mt:Date.now()})}else S.products.push({id:nid(),mt:Date.now(),...o});
+ if(id){const p=P(id);const pn=priceNote(p,o);if(pn)ev('price',id,0,{note:pn});Object.assign(p,o,{mt:Date.now()})}else{S.products.push({id:nid(),mt:Date.now(),...o});sugAdd(o)}
  save();tab='stock';render()}
 
 /* RECEIVE */
 function vRecv(){return `<h3>Receive a delivery</h3><select id=rp onchange=ru()>${popt()}</select><select id=rn></select><input id=rq type=number step=any placeholder="Quantity"><input id=rb placeholder="Batch number"><label>Expiry date<input id=re type=date></label><input id=ri placeholder="Invoice number"><button class=pri onclick=rv()>Record delivery</button>`}
 function ru(){const p=P($('rp').value);if(p)$('rn').innerHTML=units(p).map((u,i)=>`<option value=${i}>${esc(u.n)}</option>`).join('')}
-function rv(){const p=P($('rp').value),q=+$('rq').value;if(!p||!(q>0))return alert('Choose a product and enter a quantity.');const u=units(p)[$('rn').value];ev('recv',p.id,q*u.q,{rq:U.role=='staff',note:q+' '+u.n,batch:$('rb').value,exp:$('re').value,inv:$('ri').value});alert(U.role=='staff'?'Delivery recorded. A manager must verify it against the invoice.':'Delivery recorded');render()}
+function rv(){if(lk())return;const p=P($('rp').value),q=+$('rq').value;if(!p||!(q>0))return alert('Choose a product and enter a quantity.');const u=units(p)[$('rn').value];ev('recv',p.id,q*u.q,{rq:U.role=='staff',note:q+' '+u.n,batch:$('rb').value,exp:$('re').value,inv:$('ri').value});alert(U.role=='staff'?'Delivery recorded. A manager must verify it against the invoice.':'Delivery recorded');render()}
 
 /* COUNT + ADJUST */
 const due=()=>{const d=Math.floor(Date.now()/864e5),o=S.products.filter(p=>!p.ctrl);return[...S.products.filter(p=>p.ctrl),...Array.from({length:Math.min(3,o.length)},(_,i)=>o[(d*3+i)%o.length])]};
@@ -134,8 +134,8 @@ function vCount(){return `<h3>Counts due today</h3>${due().map(p=>`<div class=ca
  <h3>Count any product</h3><select onchange=cf(this.value)><option value="">Choose a product</option>${popt()}</select><div id=cf></div>
  <h3>Adjust stock</h3><select id=ap>${popt()}</select><select id=ar><option value=-1>Damaged</option><option value=-1>Expired</option><option value=-1>Write-off</option><option value=-1>Returned to supplier</option><option value=1>Customer return</option></select><input id=aq type=number step=any placeholder="Quantity in smallest unit"><input id=an placeholder="Note (required)"><button class=pri onclick=adj()>Record adjustment</button>`}
 function cf(id){if(!id)return;const p=P(id);$('cf').innerHTML=`<div class=card><b>${esc(p.name)}</b><small>Count what is physically on the shelf. Expected stock is hidden on purpose.</small>${units(p).slice().reverse().map(u=>`<label>${esc(u.n)}${u.q>1?' (x'+u.q+')':''}<input type=number min=0 step=any class=cn data-q=${u.q} value=0></label>`).join('')}<button class=pri onclick=cs(${id})>Submit count</button></div>`}
-function cs(id){const p=P(id);let t=0;document.querySelectorAll('.cn').forEach(i=>t+=(+i.value||0)*i.dataset.q);const ex=stock(p),d=t-ex;ev('count',id,d,{exp:ex,cnt:t,v:d*p.bp});$('cf').innerHTML=`<div class=card>${owner()?`Counted ${fmt(p,t)}. Expected ${fmt(p,ex)}. Variance: ${d?fmt(p,d):'none'}.`:'Count recorded.'}</div>`}
-function adj(){const p=P($('ap').value),q=+$('aq').value,n=$('an').value.trim();if(!p||!(q>0)||!n)return alert('Enter a quantity and a note.');const r=$('ar');ev('adj',p.id,q*r.value,{reason:r.options[r.selectedIndex].text,note:n});alert('Adjustment recorded');render()}
+function cs(id){if(lk())return;const p=P(id);let t=0;document.querySelectorAll('.cn').forEach(i=>t+=(+i.value||0)*i.dataset.q);const ex=stock(p),d=t-ex;ev('count',id,d,{exp:ex,cnt:t,v:d*p.bp});$('cf').innerHTML=`<div class=card>${owner()?`Counted ${fmt(p,t)}. Expected ${fmt(p,ex)}. Variance: ${d?fmt(p,d):'none'}.`:'Count recorded.'}</div>`}
+function adj(){if(lk())return;const p=P($('ap').value),q=+$('aq').value,n=$('an').value.trim();if(!p||!(q>0)||!n)return alert('Enter a quantity and a note.');const r=$('ar');ev('adj',p.id,q*r.value,{reason:r.options[r.selectedIndex].text,note:n});alert('Adjustment recorded');render()}
 
 /* REPORTS */
 function alerts(){
@@ -145,10 +145,13 @@ function alerts(){
   if(e.ty=='void')A.push(`${e.rc} voided by ${e.u}: ${e.note}`);
   if(e.ty=='adj')A.push(`${e.u} adjusted ${p.name} by ${fmt(p,e.d)} (${e.reason}: ${e.note})`);
   if(e.ty=='user')A.push(`${e.u}: ${e.note}`);
+  if(e.ty=='recon'&&(e.bad||e.miss||e.extra))A.push(`${e.u}: ${e.note}`);
   if(e.ty=='link')A.push(`${e.u} linked a barcode to ${p.name}: ${e.note}`);
   if(e.ty=='price')A.push(`${e.u} changed ${p.name}: ${e.note}`);
   if(e.ty=='count'&&e.d&&Math.abs(e.d)>(p.ctrl?0:p.tol/100*e.exp))A.push(`Count variance on ${p.name}: ${fmt(p,e.d)} (${money(e.v)}), counted by ${e.u}`)});
  const rmc={};S.events.filter(e=>e.ty=='rm'&&e.t>=since).forEach(e=>rmc[e.u]=(rmc[e.u]||0)+1);Object.entries(rmc).forEach(([k,v])=>{if(v>=3)A.push(`${k} had ${v} cart removals or reductions in 7 days`)});
+ const uset=new Set(S.events.filter(e=>e.ty=='sale'&&e.pref).map(e=>e.pref)),up=S.events.filter(e=>e.ty=='pay'&&!uset.has(e.pc)&&Date.now()-e.pt>72e5&&Date.now()-e.pt<864e5);
+ if(up.length)A.push(up.length+' M-Pesa payment(s) totalling '+money(up.reduce((s,e)=>s+e.pa,0))+' received over 2 hours ago have no sale');
  const uv=unv().filter(e=>Date.now()-e.t>432e5);if(uv.length)A.push(uv.length+' deliveries unverified for over 12 hours');
  fcast().filter(x=>x.left<(S.cfg.lead||7)).slice(0,5).forEach(x=>A.push(`${x.p.name} may run out in about ${Math.max(0,Math.round(x.left))} days`));
  return A}
@@ -166,6 +169,7 @@ function vRep(){
  <h3>Team</h3>${S.users.map(u=>`<div class="card row"><span>${esc(u.name)} (${u.role})${u.active===false?' <span class=tag>left</span>':''}</span>${u.id==U.id?'':`<button onclick="uact(${u.id})">${u.active===false?'Reactivate':'Deactivate'}</button><button onclick="upin(${u.id})">Reset PIN</button>`}</div>`).join('')}<input id=nn placeholder="New staff name"><input id=np placeholder="PIN" inputmode=numeric><select id=nr><option value=staff>Staff</option><option value=manager>Manager (can approve)</option></select><button onclick=nu()>Add staff</button><button onclick=cp()>Change my PIN</button>
  <h3>Daily report</h3><div class=card style="white-space:pre-wrap">${esc(dtxt())}</div><a class=pri target=_blank style="display:block;text-align:center;text-decoration:none;border-radius:8px;box-sizing:border-box" href="https://wa.me/${S.cfg.wa||''}?text=${encodeURIComponent(dtxt())}">Send summary to owner on WhatsApp</a>
  <h3>Server and sync</h3><input id=cu placeholder="Server or Google script address" value="${esc(S.cfg.url||'')}"><input id=ck placeholder="Access key" value="${esc(S.cfg.key||'')}"><input id=cw placeholder="Owner WhatsApp number with country code" value="${esc(S.cfg.wa||'')}"><button class=pri onclick=scfg()>Save and sync now</button><p class=m>${esc(ss||'Not connected. The app works without a server.')}</p>
+ ${licCard()}<h3>M-Pesa check</h3><p class=m>Copy the day\u2019s M-Pesa messages for money received from the owner\u2019s phone and paste them here. Only the result counts are saved, never the messages.</p><input id=mpd type=date value="${dl(new Date())}"><textarea id=mpt rows=5 placeholder="Paste messages here"></textarea><button class=pri onclick=mcheck()>Check against sales</button><div id=mpo></div>
  <h3>Backup</h3><textarea readonly rows=4 onclick=this.select()>${esc(JSON.stringify(S))}</textarea><p class=m>Copy and keep this text somewhere safe. Data is stored on this phone only in this prototype.</p>`}
 function nu(){const n=$('nn').value.trim(),p=$('np').value.trim();if(!n||p.length<4)return alert('Enter a name and a PIN of at least 4 digits.');S.users.push({id:nid(),mt:Date.now(),name:n,pin:p,role:$('nr').value});save();render()}
 function cp(){const p=prompt('New PIN (4+ digits)');if(p&&p.length>=4){U.pin=p;U.mt=Date.now();save();sync();alert('PIN changed')}}
@@ -193,14 +197,14 @@ function chg(i,f,v){const c=cart[i],p=P(c.pid),us=units(p),old=us[c.ui].p*c.qty,
 function vAppr(){const t=e=>new Date(e.t).toLocaleString([], {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
  return `<h3>Approval requests</h3>${pend().map(e=>`<div class=card><small>${t(e)} | ${esc(e.u)} | ${e.kind}</small><b>${esc(P(e.pid)?.name||'')}</b> ${esc(e.note)}<div class=row><button class=pri onclick="dec(${e.id},1)">Approve</button><button onclick="dec(${e.id},0)">Reject</button></div></div>`).join('')||'<p class=m>None waiting.</p>'}
  <h3>Deliveries to verify</h3><p class=m>Compare each with the supplier invoice. Rejecting removes the stock again.</p>${unv().map(e=>`<div class=card><small>${t(e)} | entered by ${esc(e.u)}</small><b>${esc(P(e.pid).name)}</b> ${esc(e.note)}<small>Batch ${esc(e.batch||'-')} | Invoice ${esc(e.inv||'-')} | Expiry ${esc(e.exp||'-')}</small><div class=row><button class=pri onclick="ver(${e.id},1)">Matches invoice</button><button onclick="ver(${e.id},0)">Reject</button></div></div>`).join('')||'<p class=m>Nothing to verify.</p>'}`}
-function dec(id,ok){const r=S.events.find(e=>e.id==id);if(!r)return;const note=ok?'':(prompt('Reason for rejecting (optional)')||'');ev('adec',r.pid,0,{ref:id,ok:!!ok,note});$('m').innerHTML=vAppr()}
-function ver(id,ok){const e=S.events.find(x=>x.id==id);if(!e)return;ev('rver',e.pid,0,{ref:id,ok:!!ok});if(!ok)ev('adj',e.pid,-e.d,{reason:'Delivery rejected',note:'Reversed '+e.note+' (invoice '+(e.inv||'-')+')'});$('m').innerHTML=vAppr()}
+function dec(id,ok){if(lk())return;const r=S.events.find(e=>e.id==id);if(!r)return;const note=ok?'':(prompt('Reason for rejecting (optional)')||'');ev('adec',r.pid,0,{ref:id,ok:!!ok,note});$('m').innerHTML=vAppr()}
+function ver(id,ok){if(lk())return;const e=S.events.find(x=>x.id==id);if(!e)return;ev('rver',e.pid,0,{ref:id,ok:!!ok});if(!ok)ev('adj',e.pid,-e.d,{reason:'Delivery rejected',note:'Reversed '+e.note+' (invoice '+(e.inv||'-')+')'});$('m').innerHTML=vAppr()}
 
 /* BULK IMPORT AND EXPORT */
 const priceNote=(p,o)=>{const a=units(p),b=units(o),d=[];b.forEach((u,i)=>{const x=a[i];if(!x||x.n!=u.n||x.q!=u.q){if(!d.includes('pack sizes changed'))d.push('pack sizes changed')}else if(x.p!=u.p)d.push(`${u.n} ${money(x.p)} to ${money(u.p)}`)});if(a.length!=b.length&&!d.length)d.push('pack sizes changed');return d.length?'Price change: '+d.join(', '):''};
 const tsv=()=>['name\tbarcodes\tsmallest unit\tprice\tmiddle pack\tsize\tprice\ttop pack\tsize\tprice\tcontrolled\treorder\topening stock'].concat(S.products.map(p=>{const g=i=>p.lv[i]?[p.lv[i].n,p.lv[i].q,p.lv[i].p]:['','',''];return[p.name,p.bc,p.base,p.bp,...g(0),...g(1),p.ctrl?'yes':'no',p.ro,''].join('\t')})).join('\n');
 function bulk(){$('m').innerHTML=`<button onclick="tab='stock';render()">Back to Stock</button><h3>Bulk add or update products</h3><p class=m>Copy rows from Excel or Google Sheets and paste them here. Columns in order: name, barcodes (comma separated), smallest unit, price per smallest unit, middle pack name, size, price, top pack name, size, price, controlled (yes or no), reorder level, opening stock. Pack sizes count smallest units. A product with the same name is updated. Leave opening stock blank when updating, or it is added again.</p><textarea id=bt rows=9 placeholder="Paste rows here"></textarea><button class=pri onclick=bimp()>Import</button><h3>Export all products</h3><p class=m>Select, copy and paste into a spreadsheet. Edit prices there, then paste the rows back above.</p><textarea readonly rows=7 onclick=this.select()>${esc(tsv())}</textarea>`}
-function bimp(){
+function bimp(){if(lk())return;
  const lines=$('bt').value.split(/\r?\n/).filter(l=>l.trim());let a=0,u=0;const bad=[];
  lines.forEach((l,i)=>{
   const c=l.split(l.includes('\t')?'\t':',').map(x=>x.trim());if(i==0&&/^name$/i.test(c[0]))return;
@@ -210,7 +214,7 @@ function bimp(){
   let p=S.products.find(x=>x.name.toLowerCase()==nm.toLowerCase());
   const o={name:nm,bc:bc||(p?p.bc:''),base:bn,bp:+bp,lv,ctrl:/^(y|yes|1|true)/i.test(ct||''),tol:p?p.tol:0,ro:ro?+ro:(p?p.ro:0)};
   if(p){const pn=priceNote(p,o);if(pn)ev('price',p.id,0,{note:pn});Object.assign(p,o,{mt:Date.now()});u++}
-  else{p={id:nid(),mt:Date.now(),...o};S.products.push(p);a++}
+  else{p={id:nid(),mt:Date.now(),...o};S.products.push(p);sugAdd(o);a++}
   if(+os>0)ev('recv',p.id,+os,{note:'Opening stock '+os+' '+bn,batch:'',exp:'',inv:'opening'});
  });
  save();alert('Added '+a+', updated '+u+(bad.length?'. Skipped lines: '+bad.join(', '):''));bulk()}
@@ -264,15 +268,164 @@ function upin(id){
 function findScan(c){
  const p=byBc(c);
  if(p){$('s').value=p.name;slst();return}
- if(owner())pform(0,c);else alert('This barcode is not in the product list yet. Ask the owner to add it.')}
+ if(owner()){if(catFind(c))catAdd(c);else pform(0,c)}else alert('This barcode is not in the product list yet. Ask the owner to add it.')}
 function bcScan(c){const i=$('bc');if(!i)return;i.value=i.value?i.value+', '+c:c}
+
+/* M-PESA: PASTE AT CHECKOUT, OWNER CHECK AT END OF DAY (Pochi "received" messages) */
+const MP=/\b([A-Z0-9]{10})\s+Confirmed\.?\s*(?:You have\s+)?(?:Ksh\s?([\d,]+(?:\.\d{1,2})?)\s+(?:sent to|paid to)|received\s+Ksh\s?([\d,]+(?:\.\d{1,2})?)\s+from)\s*(.+?)\s+on\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s?(AM|PM)/gi;
+const MP3=/\b([A-Z0-9]{9,10})\s+Confirmed\.?\s*Ksh\s?([\d,]+(?:\.\d{1,2})?)\s+paid to\s+(.+?)\s+from\s+(.+?)\s+(\d{9,12})\s+on\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s?(AM|PM)/gi;
+const MP4=/\b([A-Z0-9]{9,10})\s+Confirmed\.?\s*Ksh\s?([\d,]+(?:\.\d{1,2})?)\s+received for account\s+(.+?)\s+from\s+(.+?)\s+(\d{9,12})\s+on\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s?(AM|PM)/gi;
+const MP2=/Confirmed\.?\s*KES\.?\s*([\d,]+(?:\.\d{1,2})?)\s+from\s+(.+?)\s+received via M-?PESA\s+Ref\.?\s*([A-Z0-9]{10})\s+on\s+(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})\s+at\s+(\d{1,2}):(\d{2})(?:\s?(AM|PM))?/gi;
+function mpParse(txt){
+ const s=String(txt||'').replace(/\s+/g,' '),out=[];let m;
+ const re=new RegExp(MP.source,'gi');
+ while((m=re.exec(s))){if(m[3]===undefined)continue;
+  let h=+m[8]%12;if(/pm/i.test(m[10]))h+=12;const y=+m[7]<100?2000+ +m[7]:+m[7];
+  out.push({code:m[1].toUpperCase(),amt:+m[3].replace(/,/g,''),t:new Date(y,+m[6]-1,+m[5],h,+m[9]).getTime()})}
+ const r2=new RegExp(MP2.source,'gi');
+ while((m=r2.exec(s))){
+  let h=+m[7];if(m[9]){h=h%12;if(/pm/i.test(m[9]))h+=12}const y=+m[6]<100?2000+ +m[6]:+m[6];
+  out.push({code:m[3].toUpperCase(),amt:+m[1].replace(/,/g,''),t:new Date(y,+m[5]-1,+m[4],h,+m[8]).getTime()})}
+ for(const R3 of [MP3,MP4]){const r3=new RegExp(R3.source,'gi');while((m=r3.exec(s))){let h=+m[9]%12;if(/pm/i.test(m[11]))h+=12;const y=+m[8]<100?2000+ +m[8]:+m[8];out.push({code:m[1].toUpperCase(),amt:+m[2].replace(/,/g,''),t:new Date(y,+m[7]-1,+m[6],h,+m[10]).getTime()})}}
+ return out}
+function mpPaste(v){
+ const box=$('mpr');if(!v.trim())return;
+ const r=mpParse(v);
+ if(!r.length){box.textContent=/sent to|paid to/i.test(v)?'That message is for money sent, not received.':'Message not recognised. Paste the full M-Pesa message for money received, or type the code.';return}
+ const x=r[0];
+ if(new Date(x.t).toDateString()!==new Date().toDateString()){box.textContent='That message is not from today.';return}
+ if(Date.now()-x.t>3*36e5&&!confirm('This message is more than 3 hours old. Is it for this customer?'))return;
+ pref=x.code;pamt=x.amt;ppool=0;drawCart()}
+const dl=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function mcheck(){
+ const dv=$('mpd').value;if(!dv)return alert('Choose the date to check.');
+ const msgs=mpParse($('mpt').value);$('mpt').value='';
+ const d0=new Date(dv+'T00:00:00').getTime(),d1=d0+864e5,nz=c=>String(c||'').replace(/O/g,'0'),seen=new Map();
+ msgs.forEach(x=>{if(!seen.has(x.code))seen.set(x.code,x)});
+ S.events.filter(e=>e.ty=='pay').forEach(e=>{if(!seen.has(e.pc))seen.set(e.pc,{code:e.pc,amt:e.pa,t:e.pt})});
+ if(!seen.size){$('mpo').innerHTML='<p class=m>No received M-Pesa messages recognised. Paste the full messages for money received.</p>';return}
+ const ix=new Map(S.events.map(e=>[e.id,e])),R={};
+ S.events.forEach(e=>{if(e.ty=='sale'&&e.pm=='M-Pesa'&&e.t>=d0&&e.t<d1){const r=R[e.rc]||(R[e.rc]={rc:e.rc,u:e.u,v:0,code:e.pref,pv:0,pa:0});r.v+=e.v;if(e.pv)r.pv=1;if(e.pamt)r.pa=1}});
+ S.events.forEach(e=>{if(e.ty=='void'){const o=ix.get(e.ref);if(o&&R[o.rc])R[o.rc].v-=o.v}});
+ const used=new Set(),ok=[],bad=[],miss=[];
+ Object.values(R).filter(r=>r.v>.005).forEach(r=>{
+  let x=seen.get(r.code);if(!x)for(const [c,y] of seen)if(nz(c)==nz(r.code)){x=y;break}
+  if(!x){miss.push(r);return}used.add(x.code);(Math.abs(x.amt-r.v)<.01?ok:bad).push({r,x})});
+ const extra=[...seen.values()].filter(x=>!used.has(x.code)&&x.t>=d0&&x.t<d1);
+ const row=(a,b)=>`<div class="card row"><span>${a}</span><b>${b}</b></div>`;
+ const vs=Object.values(R).filter(r=>r.v>.005),np=vs.filter(r=>r.pv).length,ns=vs.filter(r=>!r.pv&&r.pa).length,nt=vs.length-np-ns;
+ $('mpo').innerHTML=`<div class=card><b>${ok.length} matched</b> | ${bad.length} wrong amount | ${miss.length} sales with no payment | ${extra.length} payments with no sale</div><div class=card><small>Verified at the till: ${np} from the shop phone list, ${ns} pasted, ${nt} typed</small></div>`
+  +(bad.length?'<h3>Wrong amount</h3>'+bad.map(({r,x})=>row(`${esc(r.rc)} (${esc(r.u)})<small>Sale ${money(r.v)}, payment ${money(x.amt)}, code ${esc(r.code)}</small>`,'Check')).join(''):'')
+  +(miss.length?'<h3>Sales with no payment found</h3>'+miss.map(r=>row(`${esc(r.rc)} (${esc(r.u)})<small>Code entered: ${esc(r.code)}</small>`,money(r.v))).join(''):'')
+  +(extra.length?'<h3>Payments with no sale</h3>'+extra.map(x=>row('Code '+esc(x.code)+'<small>'+new Date(x.t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+'</small>',money(x.amt))).join(''):'');
+ ev('recon',null,0,{ok:ok.length,bad:bad.length,miss:miss.length,extra:extra.length,note:`M-Pesa check for ${dv}: ${ok.length} matched, ${bad.length} wrong amount, ${miss.length} sales with no payment, ${extra.length} payments with no sale`})}
+
+/* SHOP PHONE PAYMENTS: trusted list added by owner or manager, picked at the till */
+const payPool=()=>{const now=Date.now(),used=new Set(S.events.filter(e=>e.ty=='sale'&&e.pref).map(e=>e.pref));return S.events.filter(e=>e.ty=='pay'&&!used.has(e.pc)&&now-e.pt<90*6e4&&now-e.pt>-6e5).sort((a,b)=>b.pt-a.pt).filter((e,i,a)=>a.findIndex(x=>x.pc==e.pc)==i)};
+function payHtml(tot){
+ const L=payPool();
+ if(!L.length)return '<p class=m>No unused payments from the shop phone in the last 90 minutes. Paste the message or type the code below.</p>';
+ return '<small class=m>Payments received (tap the one for this customer)</small>'+L.map(e=>{const mt=Math.abs(e.pa-tot)<.01;return `<button class="${mt?'pri':''}" style="width:100%;text-align:left" onclick="pickPay(${e.id})">${new Date(e.pt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} | ${money(e.pa)} | ...${esc(e.pc.slice(-4))}${mt?' (matches total)':''}</button>`}).join('')}
+function pickPay(id){const e=S.events.find(x=>x.id==id);if(!e)return;pref=e.pc;pamt=e.pa;ppool=1;drawCart()}
+function payModal(){modal(`<h3>Add received payments</h3><p class=m>A manager PIN is needed. Paste the M-Pesa messages for money received.</p><input id=gp type=password inputmode=numeric placeholder="Manager PIN"><textarea id=pt rows=4 placeholder="Paste messages here"></textarea><button class=pri onclick=addPay()>Add payments</button><button onclick=unmod()>Cancel</button><div id=gm class=bad></div>`)}
+function addPay(){if(lk())return;
+ let by=U.name;
+ if(U.role=='staff'){const m=S.users.find(u=>u.role!='staff'&&u.active!==false&&u.pin===($('gp')||{}).value);if(!m){const g=$('gm');if(g)g.textContent='Wrong manager PIN';return}by=m.name+' (PIN)'}
+ const r=mpParse($('pt').value);
+ if(!r.length){const g=$('gm');if(g)g.textContent='No received M-Pesa messages recognised.';else alert('No received M-Pesa messages recognised. Paste the full messages for money received.');return}
+ $('pt').value='';
+ const have=new Set(S.events.filter(e=>e.ty=='pay').map(e=>e.pc));let a=0,s=0;
+ r.forEach(x=>{if(have.has(x.code)){s++;return}have.add(x.code);ev('pay',null,0,{pc:x.code,pa:x.amt,pt:x.t,note:'M-Pesa payment added',appr:by});a++});
+ if(U.role=='staff')unmod();
+ alert(a+' payment(s) added'+(s?', '+s+' already in the list':''));if(U.role!='staff')render()}
+function vPay(){
+ const day=new Date().setHours(0,0,0,0),L=S.events.filter(e=>e.ty=='pay'&&e.pt>=day).sort((a,b)=>b.pt-a.pt).filter((e,i,a)=>a.findIndex(x=>x.pc==e.pc)==i),by={};
+ S.events.forEach(e=>{if(e.ty=='sale'&&e.pref)by[e.pref]=e});
+ const tot=L.reduce((s,e)=>s+e.pa,0),un=L.filter(e=>!by[e.pc]),ut=un.reduce((s,e)=>s+e.pa,0);
+ return `${nstat()}<h3>Payments received today</h3><div class=card><small>${L.length} payments</small><div class=tot>${money(tot)}</div><small>${money(ut)} not yet used in a sale (${un.length})</small></div>
+ <h3>Add payments</h3><p class=m>On the shop phone, copy the M-Pesa messages for money received and paste them here. Only the code, amount and time are kept.</p><textarea id=pt rows=4 placeholder="Paste messages here"></textarea><button class=pri onclick=addPay()>Add payments</button>
+ <h3>Today’s list</h3>${L.map(e=>{const s=by[e.pc];return `<div class="card row"><span>${new Date(e.pt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} | ...${esc(e.pc.slice(-4))}${e.src=='auto'?' (auto)':''}<small>${s?'Used: '+esc(s.rc)+' by '+esc(s.u):'Not used yet'}</small></span><b>${money(e.pa)}</b></div>`}).join('')||'<p class=m>No payments added today.</p>'}`}
+
+/* ANDROID APP BRIDGE (automatic M-Pesa reading on the shop phone) */
+function nsync(){try{if(window.PTNative&&url()&&S.cfg.key)PTNative.setSync(url(),S.cfg.key)}catch(e){}}
+function nstat(){
+ let n=null;try{if(window.PTNative)n=JSON.parse(PTNative.status())}catch(e){}
+ if(!n)return '<div class=card><b>Automatic reading</b><small>Needs the PharmaTrack Android app on the shop phone. Until then, paste messages below.</small></div>';
+ if(!n.sms)return '<div class=card><b>Automatic reading</b><small>This version of the app cannot read messages. Paste them below.</small></div>';
+ const t=n.lastTime?new Date(n.lastTime).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
+ return `<div class=card><b>Automatic reading: ${n.granted?'ON':'OFF'}</b><small>${n.granted?'M-Pesa messages on this phone are added to the list by themselves.':'Turn it on so payments are added without typing.'}${n.queued?' Waiting to upload: '+n.queued+'.':''}${n.lastAmount?' Last: '+money(n.lastAmount)+' at '+t+'.':''}</small>${n.error?`<small class=bad>Upload problem: ${esc(n.error)}. Check the server address and key.</small>`:''}${n.ignoredSender?`<small class=bad>A payment message from sender “${esc(n.ignoredSender)}” was ignored. Tell support.</small>`:''}${n.granted?'':'<button class=pri onclick="PTNative.requestSms()">Turn on automatic reading</button>'}<button onclick="PTNative.batteryHelp()">Keep this phone awake for messages</button><button onclick=render()>Refresh</button></div>`}
+
+/* LICENCE AND SHARED CATALOGUE (switched on by config.js; off when licUrl or licPub is empty) */
+const CFG=window.PT_CONFIG||{},LIC_URL=CFG.licUrl||'',LIC_PUB=CFG.licPub||'';
+const licOn=()=>!!(LIC_URL&&LIC_PUB);
+const lfd=d=>new Date(d).toLocaleDateString([], {day:'numeric',month:'short',year:'numeric'});
+const b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+let CAT=[];try{CAT=JSON.parse(localStorage.getItem('ptcat')||'[]')}catch(e){}
+async function licVerify(payload,sig){
+ try{if(!(window.crypto&&crypto.subtle))return null;
+  const k=await crypto.subtle.importKey('spki',b64d(LIC_PUB),{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
+  return await crypto.subtle.verify('RSASSA-PKCS1-v1_5',k,b64d(sig),new TextEncoder().encode(payload))}catch(e){return false}}
+async function licReverify(){
+ const L=S.cfg.lic;if(!licOn()||!L||!L.payload||!L.sig)return;
+ const ok=await licVerify(L.payload,L.sig);if(ok===false&&!L.bad){L.bad=true;save()}}
+function licState(){
+ if(!licOn())return{s:'off',lock:false};
+ const L=S.cfg.lic;
+ if(!L||!L.payload)return{s:'none',lock:true,msg:'No licence yet. The owner enters the licence key under Reports.'};
+ if(L.bad)return{s:'bad',lock:true,msg:'The licence could not be verified. Check the licence key.'};
+ let p;try{p=JSON.parse(L.payload)}catch(e){return{s:'bad',lock:true,msg:'Licence data is damaged. Check the licence key.'}}
+ const now=Date.now();
+ if(now<(S.cfg.licSeen||0)-864e5)return{s:'clock',lock:true,p,msg:'The phone clock was set back. Correct it and go online.'};
+ if(p.b)return{s:'blocked',lock:true,p,msg:'This licence or phone is blocked. Contact support.'};
+ if(now>p.x)return{s:'recheck',lock:true,p,msg:'Connect to the internet so the licence can be checked again.'};
+ if(now<=p.u){const days=Math.ceil((p.u-now)/864e5);return{s:p.t=='trial'?'trial':'active',lock:false,days,p,msg:(p.t=='trial'?'Trial: ':'Licence: ')+(days>7?'paid until '+lfd(p.u):days+' day(s) left')}}
+ if(now<=p.g){const d=Math.ceil((p.g-now)/864e5);return{s:'grace',lock:false,days:d,p,msg:'Licence expired. Pay within '+d+' day(s) to avoid read-only mode.'}}
+ return{s:'expired',lock:true,p,msg:'Licence expired. The app is read-only: you can view and export records.'}}
+function lk(){const s=licState();if(!s.lock)return false;alert(s.msg);return true}
+function licBanner(){const s=licState();if(s.s=='off'||((s.s=='active'||s.s=='trial')&&s.days>7))return '';return `<div class=card style="border-color:var(--r)"><b class=bad>${esc(s.msg)}</b></div>`}
+function licCard(){
+ if(!licOn())return '';const s=licState(),L=S.cfg.lic||{};
+ return `<h3>Licence</h3><div class=card><b>${esc(s.msg||'')}</b>${L.err?`<small class=bad>${esc(L.err)}</small>`:''}<input id=lk1 placeholder="Licence key (PT-XXXX-XXXX)" value="${esc(S.cfg.licKey||'')}"><button class=pri onclick="licSave()">Save and check</button><small>${s.p?'Paid until '+lfd(s.p.u)+'. Phone limits and blocks are set by support.':''}</small></div>`}
+async function licSave(){S.cfg.licKey=$('lk1').value.trim().toUpperCase();save();await licCheck();render()}
+async function licCheck(){
+ if(!licOn()||!S.cfg.licKey)return;
+ try{
+  const r=await fetch(LIC_URL,{method:'POST',body:JSON.stringify({a:'chk',key:S.cfg.licKey,dev:S.dev,sug:S.cfg.sugq||[]})});
+  const d=await r.json();
+  if(d.error){S.cfg.lic={err:d.error==='unknown key'?'That licence key is not recognised.':d.error};save();return}
+  const ok=await licVerify(d.payload,d.sig);
+  S.cfg.lic={payload:d.payload,sig:d.sig,at:Date.now(),bad:ok===false};
+  if(ok!==false)S.cfg.sugq=[];
+  S.cfg.licSeen=Math.max(S.cfg.licSeen||0,Date.now());save();
+  if(ok!==false)catSync()
+ }catch(e){}}
+async function catSync(){
+ if(!licOn()||!S.cfg.licKey)return;
+ try{
+  let since=+(localStorage.getItem('ptcatv')||0),all=CAT.slice();
+  for(let i=0;i<10;i++){
+   const r=await fetch(LIC_URL,{method:'POST',body:JSON.stringify({a:'cat',key:S.cfg.licKey,since})}),d=await r.json();
+   if(d.error)break;
+   d.items.forEach(x=>{const k=norm(x.b.split(',')[0]),j=all.findIndex(y=>norm(y.b.split(',')[0])==k);if(j<0)all.push(x);else all[j]=x});
+   since=d.v;if(!d.more)break}
+  CAT=all;localStorage.setItem('ptcat',JSON.stringify(all));localStorage.setItem('ptcatv',String(since))
+ }catch(e){}}
+function catFind(c){const n=norm(c);return n?CAT.find(x=>x.b.split(',').some(y=>norm(y)==n)):null}
+function catHint(c){
+ const e=catFind(c);if(!e)return '';
+ return `<p class=m>Found in the shared catalogue: <b>${esc(e.n)}</b>.</p>`+(owner()?`<button class=pri onclick="catAdd('${esc(c)}')">Add to my stock</button>`:'<p class=m>Ask the owner to add it.</p>')}
+function catAdd(c){const e=catFind(c);if(!e)return;pform(0,c,{name:e.n,base:e.u,lv:(e.l||[]).map(x=>({n:x.n,q:x.q,p:0})),ctrl:!!e.c,bc:e.b.split(',').map(x=>x.trim()).join(', ')})}
+function sugAdd(o){
+ if(!licOn()||!o.bc||catFind(o.bc.split(',')[0]))return;
+ const q=S.cfg.sugq=S.cfg.sugq||[];if(q.length>=200)return;
+ q.push({b:o.bc,n:o.name,u:o.base,l:o.lv.map(x=>({n:x.n,q:x.q})),c:o.ctrl?1:0});save()}
 function dtxt(){const day=new Date().setHours(0,0,0,0),ev=S.events.filter(e=>e.t>=day),by={},pms={};let tot=0;
  ev.forEach(e=>{if(e.ty=='sale'||e.ty=='void'){const o=e.ty=='sale'?e:S.events.find(x=>x.id==e.ref);if(!o)return;const v=e.ty=='sale'?e.v:-o.v;by[o.u]=(by[o.u]||0)+v;tot+=v;const m=o.pm||'Cash';pms[m]=(pms[m]||0)+v}});
  const n=t=>ev.filter(e=>e.ty==t).length,sm=sMap(),ctl=S.products.filter(p=>p.ctrl).map(p=>p.name+': '+fmt(p,sm[p.id]||0)).join('; ');
  return `PharmaTrack ${new Date().toLocaleDateString()}\nSales ${money(tot)}${Object.entries(by).map(([k,v])=>`\n- ${k}: ${money(v)}`).join('')}\nPayments: ${Object.entries(pms).map(([k,v])=>k+' '+money(v)).join(', ')||'none'}\nVoids ${n('void')}, adjustments ${n('adj')}, count variances ${ev.filter(e=>e.ty=='count'&&e.d).length}\nRunning low: ${fcast().filter(x=>x.left<(S.cfg.lead||7)).slice(0,3).map(x=>x.p.name+' (about '+Math.max(0,Math.round(x.left))+' days)').join('; ')||'none'}\nControlled stock: ${ctl||'none'}`}
 const url=()=>S.cfg.url||(window.PT_SERVER?location.origin:'');
 const setSS=()=>{const e=$('ss');if(e)e.textContent=ss};
-function scfg(){S.cfg={...S.cfg,url:$('cu').value.trim().replace(/\/$/,''),key:$('ck').value.trim(),wa:$('cw').value.replace(/\D/g,'')};save();sync().then(render)}
+function scfg(){S.cfg={...S.cfg,url:$('cu').value.trim().replace(/\/$/,''),key:$('ck').value.trim(),wa:$('cw').value.replace(/\D/g,'')};save();nsync();sync().then(render)}
 async function sync(){
  const u=url();if(!u||!S.cfg.key)return;
  try{
@@ -284,7 +437,8 @@ async function sync(){
   S.cfg.cur=d.cursor;ss='Synced '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});save();const n=pend().length;if(n&&U&&U.role!='staff')ss+=' | '+n+' approval(s) waiting';
  }catch(e){ss='Offline, will retry'}
  setSS()}
-sync();setInterval(sync,6e4);addEventListener('online',sync);
+nsync();sync();setInterval(sync,6e4);addEventListener('online',sync);
+if(licOn()){licReverify();licCheck();setInterval(licCheck,216e5);addEventListener('online',licCheck);setInterval(()=>{S.cfg.licSeen=Math.max(S.cfg.licSeen||0,Date.now());save();licReverify()},6e4)}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
 </script></body></html>
